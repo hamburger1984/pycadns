@@ -9,17 +9,12 @@ class pycadns(object):
     """
     >>> loop = pyuv.Loop.default_loop()
     >>> w = pycadns(loop)
-    >>> resolved = {}
-    >>> def callback(query, result, err):
-    ...     if err or not result: return
-    ...     if not query in resolved: resolved[query] = sorted(result)
-    ...     else: resolved[query].extend(sorted(result))
-    >>> w.ptr("8.8.8.8", callback)
-    >>> w.queryA('heise.de', callback)
+    >>> w.ptr('8.8.8.8')
+    >>> w.queryA('heise.de')
     >>> w.queryAAAA('heise.de')
-    >>> w.queryA('time1.google.com', callback)
+    >>> w.queryA('time1.google.com')
     >>> w.queryAAAA('time1.google.com')
-    >>> loop.run()
+    >>> _ = loop.run()
     >>> print(sorted(w.results()))
     [('8.8.8.8', ['google-public-dns-a.google.com']), ('heise.de',\
  ['193.99.144.80', '2a02:2e0:3fe:1001:302::']), ('time1.google.com',\
@@ -151,6 +146,7 @@ class pycadns(object):
 
     def errors(self):
         return self._errors.copy()
+
 
 if __name__ == '__main__':
     import doctest
