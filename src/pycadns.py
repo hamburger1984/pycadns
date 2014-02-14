@@ -1,20 +1,20 @@
-__author__ = 'Andreas Krohn (hamburger1984@gmail.com)'
+__author__ = 'Andreas Krohn (andreas.krohn@haw-hamburg.de)'
 
-import pyuv
-import pycares
 import logging
+import pycares
+import select
+import traceback
 
 
 class pycadns(object):
     """
-    >>> loop = pyuv.Loop.default_loop()
-    >>> w = pycadns(loop)
+    >>> w = pycadns()
     >>> w.ptr('8.8.8.8')
     >>> w.queryA('heise.de')
     >>> w.queryAAAA('heise.de')
     >>> w.queryA('time1.google.com')
     >>> w.queryAAAA('time1.google.com')
-    >>> _ = loop.run()
+    >>> w.run()
     >>> print(sorted(w.results()))
     [('8.8.8.8', ['google-public-dns-a.google.com']), ('heise.de',\
  ['193.99.144.80', '2a02:2e0:3fe:1001:302::']), ('time1.google.com',\
@@ -47,70 +47,50 @@ class pycadns(object):
     ARES_EBADSTR = 17
     ARES_ECANCELLED = 24
 
-    def __init__(self, loop, timeout=4, tries=2):
-        self._channel = pycares.Channel(sock_state_cb=self._sock_state,
-                                        timeout=timeout, tries=tries)
+    def __init__(self, timeout=4, tries=2):
+        self._channel = pycares.Channel(timeout=timeout, tries=tries)
         self._fd_map = {}
-        self._loop = loop
-        self._timer = pyuv.Timer(loop)
         self._queries = []
         self._done = []
         self._results = {}
         self._errors = set()
 
-    def _sock_state(self, fd, readable, writable):
-        if readable or writable:
-            if fd not in self._fd_map:
-                # New socket
-                handle = pyuv.Poll(self._loop, fd)
-                handle.fd = fd
-                self._fd_map[fd] = handle
-            else:
-                handle = self._fd_map[fd]
-            if not self._timer.active:
-                self._timer.start(self._timer_tick, 1.0, 1.0)
-            handle.start(
-                pyuv.UV_READABLE if readable else 0 |
-                pyuv.UV_WRITABLE if writable else 0,
-                self._poll)
-        else:
-            handle = self._fd_map.pop(fd)
-            handle.close()
-            if not self._fd_map:
-                self._timer.stop()
-
-    def _timer_tick(self, timer):
-        self._channel.process_fd(pycares.ARES_SOCKET_BAD,
-                                 pycares.ARES_SOCKET_BAD)
-
-    def _poll(self, handle, events, error):
-        try:
-            read_fd = handle.fd
-            write_fd = handle.fd
-            if error is not None:
-                self._channel.process_fd(read_fd, write_fd)
-                return
-            if not events & pyuv.UV_READABLE:
-                read_fd = pycares.ARES_SOCKET_BAD
-            if not events & pyuv.UV_WRITABLE:
-                write_fd = pycares.ARES_SOCKET_BAD
-            self._channel.process_fd(read_fd, write_fd)
-        except UnicodeDecodeError as ude:
-            logging.error('in _poll, %s, %s, %s\n%s',
-                          self._queries, self._done, self._results, ude)
-            raise
+    def run(self):
+        chan = self._channel
+        while True:
+            try:
+                read_fds, write_fds = chan.getsock()
+                if not read_fds and not write_fds:
+                    break
+                timeout = chan.timeout()
+                if not timeout:
+                    chan.process_fd(pycares.ARES_SOCKET_BAD,
+                                    pycares.ARES_SOCKET_BAD)
+                    continue
+                rlist, wlist, xlist = select.select(read_fds, write_fds, [],
+                                                    timeout)
+                for fd in rlist:
+                    chan.process_fd(fd, pycares.ARES_SOCKET_BAD)
+                for fd in wlist:
+                    chan.process_fd(pycares.ARES_SOCKET_BAD, fd)
+            except:
+                logging.error('Failure in pycares.run()\n%s',
+                              traceback.format_exc())
 
     def ptr(self, ipaddress, callback=None):
-        return self._query(pycares.reverse_address(ipaddress), ipaddress,
-                           pycares.QUERY_TYPE_PTR, 'PTR%', callback)
+        self._query(pycares.reverse_address(ipaddress), ipaddress,
+                    pycares.QUERY_TYPE_PTR, 'PTR%', callback)
+
+    def ptrs(self, ipaddresses, callback=None):
+        for i in ipaddresses:
+            self.ptr(i, callback)
 
     def queryA(self, name, callback=None):
-        return self._query(name, name, pycares.QUERY_TYPE_A, 'A%', callback)
+        self._query(name, name, pycares.QUERY_TYPE_A, 'A%', callback)
 
     def queryAAAA(self, name, callback=None):
         ## observed errors: [1, 4, 11]
-        return self._query(name, name, pycares.QUERY_TYPE_AAAA, 'AAAA%',
-                           callback)
+        self._query(name, name, pycares.QUERY_TYPE_AAAA, 'AAAA%', callback)
 
     def _query(self, name, originalName, type, queryPrefix, callback=None):
         key = queryPrefix + originalName
@@ -144,8 +124,11 @@ class pycadns(object):
             self._results.clear()
         return result
 
-    def errors(self):
-        return self._errors.copy()
+    def errors(self, clear=False):
+        result = self._errors.copy()
+        if clear:
+            self._errors.clear()
+        return result
 
 
 if __name__ == '__main__':

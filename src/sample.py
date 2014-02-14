@@ -1,15 +1,12 @@
-import pyuv
 from pycadns import pycadns
 
-
-loop = pyuv.Loop.default_loop()
-w = pycadns(loop)
+w = pycadns()
 w.ptr('8.8.8.8')
 w.queryA('heise.de')
 w.queryAAAA('heise.de')
 w.queryA('time1.google.com')
 w.queryAAAA('time1.google.com')
-loop.run()
+w.run()
 print(sorted(w.results()))
 
 ## prints something like:
