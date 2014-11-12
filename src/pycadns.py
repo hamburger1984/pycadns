@@ -6,14 +6,14 @@ import select
 import traceback
 
 
-class pycadns(object):
+class PycaDns(object):
     """
-    >>> w = pycadns()
+    >>> w = PycaDns()
     >>> w.ptr('8.8.8.8')
-    >>> w.queryA('heise.de')
-    >>> w.queryAAAA('heise.de')
-    >>> w.queryA('time1.google.com')
-    >>> w.queryAAAA('time1.google.com')
+    >>> w.query_a('heise.de')
+    >>> w.query_aaaa('heise.de')
+    >>> w.query_a('time1.google.com')
+    >>> w.query_aaaa('time1.google.com')
     >>> w.run()
     >>> print(sorted(w.results()))
     [('8.8.8.8', ['google-public-dns-a.google.com']), ('heise.de',\
@@ -23,8 +23,8 @@ class pycadns(object):
 
     # TODO: what about this?
     # Traceback (most recent call last):
-    #  File "./src/pycadns.py", line 109, in _poll
-    #     self._channel.process_fd(read_fd, write_fd)
+    # File "./src/pycadns.py", line 109, in _poll
+    # self._channel.process_fd(read_fd, write_fd)
     # UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe4 in
     # ..position 14: invalid continuation byte
 
@@ -47,7 +47,7 @@ class pycadns(object):
     ARES_EBADSTR = 17
     ARES_ECANCELLED = 24
 
-    def __init__(self, timeout=4, tries=2):
+    def __init__(self, timeout: float=5, tries: int=4):
         self._channel = pycares.Channel(timeout=timeout, tries=tries)
         self._fd_map = {}
         self._queries = []
@@ -77,26 +77,28 @@ class pycadns(object):
                 logging.error('Failure in pycares.run()\n%s',
                               traceback.format_exc())
 
-    def ptr(self, ipaddress, callback=None):
+    def ptr(self, ipaddress: str, callback=None):
         self._query(pycares.reverse_address(ipaddress), ipaddress,
                     pycares.QUERY_TYPE_PTR, 'PTR%', callback)
 
-    def ptrs(self, ipaddresses, callback=None):
+    def ptrs(self, ipaddresses: list, callback=None):
         for i in ipaddresses:
             self.ptr(i, callback)
 
-    def queryA(self, name, callback=None):
-        self._query(name, name, pycares.QUERY_TYPE_A, 'A%', callback)
+    def query_a(self, name: str, callback=None):
+        self._query(name + '.' if name[-1] != '.' else name, name,
+                    pycares.QUERY_TYPE_A, 'A%', callback)
 
-    def queryAAAA(self, name, callback=None):
-        ## observed errors: [1, 4, 11]
-        self._query(name, name, pycares.QUERY_TYPE_AAAA, 'AAAA%', callback)
+    def query_aaaa(self, name: str, callback=None):
+        self._query(name + '.' if name[-1] != '.' else name, name,
+                    pycares.QUERY_TYPE_AAAA, 'AAAA%', callback)
 
-    def _query(self, name, originalName, type, queryPrefix, callback=None):
-        key = queryPrefix + originalName
+    def _query(self, name: str, original_name: str, query_type: int,
+               query_prefix: str, callback=None):
+        key = query_prefix + original_name
         if key in self._done:
             if callback:
-                callback(originalName, self._results[originalName], None)
+                callback(original_name, self._results[original_name], None)
             return
         if key in self._queries:
             return
@@ -104,27 +106,32 @@ class pycadns(object):
 
         def context_callback(result, error):
             if not error and result:
-                if not originalName in self._results:
-                    self._results[originalName] = sorted(result)
+                if original_name not in self._results:
+                    self._results[original_name] = sorted(result)
                 else:
-                    self._results[originalName] = sorted(
-                        self._results[originalName] + result)
+                    self._results[original_name] = sorted(
+                        self._results[original_name] + result)
                 self._done.append(key)
             self._queries.remove(key)
             if error:
                 self._errors.add(error)
             if callback:
-                callback(originalName, result, error)
+                callback(original_name, result, error)
 
-        self._channel.query(name, type, context_callback)
+        try:
+            self._channel.query(name, query_type, context_callback)
+        except:
+            logging.error('Query: %s, Type: %d\n%s', name, query_type,
+                          traceback.format_exc())
+            raise
 
-    def results(self, clear=False):
+    def results(self, clear: bool=False) -> list:
         result = list(self._results.items())
         if clear:
             self._results.clear()
         return result
 
-    def errors(self, clear=False):
+    def errors(self, clear: bool=False) -> list:
         result = self._errors.copy()
         if clear:
             self._errors.clear()

@@ -5,18 +5,15 @@ a slim wrapper for [pycares](https://crate.io/packages/pycares/) (on [github](ht
 
 basic usage:
 ```python
-import pyuv
-from pycadns import pycadns
+from pycadns import PycaDns
 
-
-loop = pyuv.Loop.default_loop()
-w = pycadns(loop)
+w = PycaDns()
 w.ptr('8.8.8.8')
-w.queryA('heise.de')
-w.queryAAAA('heise.de')
-w.queryA('time1.google.com')
-w.queryAAAA('time1.google.com')
-loop.run()
+w.query_a('heise.de')
+w.query_aaaa('heise.de')
+w.query_a('time1.google.com')
+w.query_aaaa('time1.google.com')
+w.run()
 print(sorted(w.results()))
 
 ## prints something like:
