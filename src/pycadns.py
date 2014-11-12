@@ -19,6 +19,16 @@ class PycaDns(object):
     [('8.8.8.8', ['google-public-dns-a.google.com']), ('heise.de',\
  ['193.99.144.80', '2a02:2e0:3fe:1001:302::']), ('time1.google.com',\
  ['2001:4860:4802:32::f', '216.239.32.15'])]
+    >>> w.query_ns('heise.de')
+    >>> w.run()
+    >>> print(sorted(w.results(True)))
+    [('8.8.8.8', ['google-public-dns-a.google.com']), ('heise.de',\
+ ['193.99.144.80', '2a02:2e0:3fe:1001:302::', 'ns.heise.de',\
+ 'ns.plusline.de', 'ns.pop-hannover.de', 'ns.s.plusline.de',\
+ 'ns2.pop-hannover.net']), ('time1.google.com',\
+ ['2001:4860:4802:32::f', '216.239.32.15'])]
+    >>> w.results()
+    []
     """
 
     # TODO: what about this?
@@ -92,6 +102,9 @@ class PycaDns(object):
     def query_aaaa(self, name: str, callback=None):
         self._query(name + '.' if name[-1] != '.' else name, name,
                     pycares.QUERY_TYPE_AAAA, 'AAAA%', callback)
+
+    def query_ns(self, name: str, callback=None):
+        self._query(name, name, pycares.QUERY_TYPE_NS, 'NS%', callback)
 
     def _query(self, name: str, original_name: str, query_type: int,
                query_prefix: str, callback=None):
